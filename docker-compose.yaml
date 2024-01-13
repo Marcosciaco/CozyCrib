@@ -6,27 +6,48 @@ services:
       - "5672:5672"
       - "15672:15672"
     healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost:15672"]
-        interval: 30s
-        timeout: 10s
-        retries: 5
+        test: ["CMD", "nc", "-z", " localhost", "15672"]
+        interval: 1s
+        timeout: 120s
+        retries: 200
     networks:
       - app-network
-
-  producer:
-    build: ./producer
-    depends_on:
-      - rabbitmq
+  apartments:
+    build: ./services/apartment/
+    ports:
+      - "3001:3000"
     networks:
       - app-network
-
-  consumer:
-    build: ./receiver
-    depends_on:
-      - rabbitmq
+    #depends_on:
+    #  rabbitmq:
+    #    condition: service_healthy
+  bookings:
+    build: ./services/booking/
+    ports:
+      - "3002:3000"
     networks:
       - app-network
-
+    #depends_on:
+    #  rabbitmq:
+    #    condition: service_healthy
+  searches:
+    build: ./services/search/
+    ports:
+      - "3003:3000"
+    networks:
+      - app-network
+    #depends_on:
+    #  rabbitmq:
+    #    condition: service_healthy
+  api_gateway:
+    build: ./services/gateway/
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+    #depends_on:
+    #  rabbitmq:
+    #    condition: service_healthy
 networks:
   app-network:
     driver: bridge
