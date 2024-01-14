@@ -2,52 +2,54 @@ version: '3'
 services:
   rabbitmq:
     image: "rabbitmq:management"
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
     healthcheck:
         test: ["CMD", "nc", "-z", " localhost", "15672"]
-        interval: 1s
-        timeout: 120s
-        retries: 200
+        interval: 2s
+        timeout: 200s
+        retries: 100
     networks:
       - app-network
   apartments:
     build: ./services/apartment/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "3001:3000"
     networks:
       - app-network
-    #depends_on:
-    #  rabbitmq:
-    #    condition: service_healthy
+    restart: on-failure
   bookings:
     build: ./services/booking/
     ports:
       - "3002:3000"
     networks:
       - app-network
-    #depends_on:
-    #  rabbitmq:
-    #    condition: service_healthy
+    restart: on-failure
+    depends_on:
+      - apartments
   searches:
     build: ./services/search/
     ports:
       - "3003:3000"
     networks:
       - app-network
-    #depends_on:
-    #  rabbitmq:
-    #    condition: service_healthy
+    restart: on-failure
+    depends_on:
+      - bookings
   api_gateway:
     build: ./services/gateway/
     ports:
       - "3000:3000"
     networks:
       - app-network
-    #depends_on:
-    #  rabbitmq:
-    #    condition: service_healthy
+    restart: on-failure
+    depends_on:
+      - searches
 networks:
   app-network:
     driver: bridge

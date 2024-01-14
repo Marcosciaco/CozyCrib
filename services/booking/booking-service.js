@@ -121,7 +121,8 @@ function syncApartments() {
     axios.get('http://apartments:3000/list').then((response) => {
         const apartments = response.data;
 
-        apartments.forEach(apartment => {
+        console.log('Syncing apartments:', apartments);
+        apartments.forEach(apartment => {  
             db_apartments.run('INSERT INTO apartments (id, name) VALUES (?, ?)', [apartment.id, apartment.name], (err) => {
                 if (err) {
                     console.log(err);

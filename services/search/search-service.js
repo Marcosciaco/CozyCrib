@@ -21,29 +21,29 @@ app.post('/search', async (req, res) => {
 
     console.log('Searching apartments:', from_date, to_date);
 
-    const start_date = new Date(from_date);
-    const end_date = new Date(to_date);
+    const start_date = new Date(from_date).getTime();
+    const end_date = new Date(to_date).getTime();
 
-    console.log(start_date.toDateString(), end_date.toDateString());
+    console.log(start_date, end_date);
 
-    db_bookings.all('SELECT apartment_id FROM bookings WHERE to_date <= ? AND from_date >= ?', [start_date.getTime(), end_date.getTime()], (err, rows) => {
+    // first query all the appartment ids that are booked in the given time period and then query the apartments table for all the apartments that are not in the list of booked apartments
+
+    db_bookings.all('SELECT apartment_id FROM bookings WHERE from_date <= ? AND to_date >= ?', [start_date, end_date], (err, rows) => {
         if (err) {
             console.log(err);
             return res.sendStatus(500);
         }
 
+        console.log(rows);
+
         const booked_apartments = rows.map(row => row.apartment_id);
 
-        db_apartments.all('SELECT * FROM apartments WHERE booked = 0', (err, rows) => {
-            if (err) {
-                console.log(err);
-                return res.sendStatus(500);
-            }
-
-            const available_apartments = rows.filter(row => !booked_apartments.includes(row.id));
-
-            res.send(available_apartments);
-        });
+        booked_apartments.forEach(apartment_id => {
+            db_apartments.all('SELECT * FROM apartments WHERE id != ?', [apartment_id], (err, rows) => {
+                console.log(rows);
+                res.send(rows);
+            });
+        });        
     });
 });
 
@@ -65,10 +65,12 @@ app.listen(port, () => {
 function syncApartments() {
     axios.get('http://apartments:3000/list').then(response => {
         response.data.forEach(apartment => {
+
+            console.log('Syncing apartments:', apartment);
             db_apartments.run('INSERT INTO apartments (id, name) VALUES (?, ?)', [apartment.id, apartment.name], function(err) {
                 if (err) {
                     console.log(err);
-                    return res.sendStatus(500);
+                    return err;
                 }
             });
         });
@@ -78,11 +80,17 @@ function syncApartments() {
 function syncBookings() {
     axios.get('http://bookings:3000/list').then(response => {
         response.data.forEach(booking => {
+
+            console.log('Syncing bookings:', booking);
             db_bookings.run('INSERT INTO bookings (apartment_id, from_date, to_date) VALUES (?, ?, ?)', [booking.apartment_id, booking.from_date, booking.to_date], function(err) {
                 if (err) {
                     console.log(err);
-                    return res.sendStatus(500);
+                    return err;
                 }
+
+                db_bookings.all('SELECT * FROM bookings', function(err, rows) {
+                    console.log(rows);
+                });
             });
         });
     });
