@@ -37,7 +37,7 @@ app.delete('/', async (req, res) => {
         if (err)
             return res.sendStatus(500);
         
-        const action = {action: "deleted_booking", object: {id: booking_id}};
+        const action = {action: "booking_cancelled", object: {id: booking_id}};
         notifyRabbitMQ(action);
 
         res.send(action);
