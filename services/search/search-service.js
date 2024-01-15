@@ -114,7 +114,7 @@ function cancelBooking(booking) {
         if (err)
             return res.sendStatus(500);
         else
-            console.log('Removed booking:', data);
+            console.log('Removed booking:', booking);
     });
 }
 
