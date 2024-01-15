@@ -109,6 +109,7 @@ function bookApartment(apartment) {
 }
 
 function cancelBooking(booking) {
+    console.log('Cancelling booking:', booking);
     db_bookings.run('DELETE FROM bookings WHERE id = ?', [booking.id], function(err) {
         if (err)
             return res.sendStatus(500);
