@@ -37,6 +37,11 @@ app.post('/booking/book', async (req, res) => {
     res.send(response.data);
 });
 
+app.delete('/booking', async (req, res) => {
+    const response = await axios.delete('http://bookings:3000/', {data: req.body});
+    res.send(response.data);
+});
+
 app.get('/booking/list', async (req, res) => {
     const response = await axios.get('http://bookings:3000/list');
     res.send(response.data);
