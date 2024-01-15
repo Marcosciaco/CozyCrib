@@ -19,31 +19,23 @@ db_bookings.run('CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUT
 app.post('/search', async (req, res) => {
     const { from_date, to_date } = req.body;
 
-    console.log('Searching apartments:', from_date, to_date);
-
     const start_date = new Date(from_date).getTime();
     const end_date = new Date(to_date).getTime();
 
-    console.log(start_date, end_date);
-
-    // first query all the appartment ids that are booked in the given time period and then query the apartments table for all the apartments that are not in the list of booked apartments
-
     db_bookings.all('SELECT apartment_id FROM bookings WHERE from_date <= ? AND to_date >= ?', [start_date, end_date], (err, rows) => {
-        if (err) {
-            console.log(err);
+        if (err)
             return res.sendStatus(500);
-        }
-
-        console.log(rows);
-
+        
         const booked_apartments = rows.map(row => row.apartment_id);
+        
+        db_apartments.all('SELECT * FROM apartments', (err, rows) => {
+            if (err)
+                return res.sendStatus(500);
 
-        booked_apartments.forEach(apartment_id => {
-            db_apartments.all('SELECT * FROM apartments WHERE id != ?', [apartment_id], (err, rows) => {
-                console.log(rows);
-                res.send(rows);
-            });
-        });        
+            const available_apartments = rows.filter(row => !booked_apartments.includes(row.id));
+
+            res.send(available_apartments);
+        });
     });
 });
 
@@ -51,27 +43,21 @@ app.get('/', (req, res) => {
     res.send('Search service');
 });
 
-app.get('/listen', (req, res) => {
-    listenForApartmentsInRabbitMQ();
-    res.send('Listening for apartments');
-});
-
 app.listen(port, () => {
     console.log(`Search service started at http://localhost:${port}`);
     syncApartments();
     syncBookings();
+    listenToChanges();
 });
 
 function syncApartments() {
     axios.get('http://apartments:3000/list').then(response => {
         response.data.forEach(apartment => {
-
-            console.log('Syncing apartments:', apartment);
             db_apartments.run('INSERT INTO apartments (id, name) VALUES (?, ?)', [apartment.id, apartment.name], function(err) {
-                if (err) {
+                if (err)
                     console.log(err);
-                    return err;
-                }
+                else
+                    console.log('Syncing apartments:', apartment);
             });
         });
     });
@@ -80,70 +66,76 @@ function syncApartments() {
 function syncBookings() {
     axios.get('http://bookings:3000/list').then(response => {
         response.data.forEach(booking => {
-
-            console.log('Syncing bookings:', booking);
             db_bookings.run('INSERT INTO bookings (apartment_id, from_date, to_date) VALUES (?, ?, ?)', [booking.apartment_id, booking.from_date, booking.to_date], function(err) {
-                if (err) {
+                if (err)
                     console.log(err);
-                    return err;
-                }
-
-                db_bookings.all('SELECT * FROM bookings', function(err, rows) {
-                    console.log(rows);
-                });
+                else
+                    console.log('Syncing bookings:', booking);
             });
         });
     });
 }
 
-async function listenForApartmentsInRabbitMQ() {
+function addApartment(apartment) {
+    db_apartments.run('INSERT INTO apartments (id, name) VALUES (?, ?)', [apartment.id, apartment.name], function(err) {
+        if (err)
+            console.log(err);
+        else  
+            console.log('Added apartment:', data);
+    });
+}
+
+function removeApartment(apartment) {
+    db_apartments.run('DELETE FROM apartments WHERE id = ?', [apartment.id], function(err) {
+        if (err)
+            console.log(err);
+        else
+            console.log('Removed apartment:', data);
+    });
+}
+
+function bookApartment(apartment) {
+    db_apartments.run('UPDATE apartments SET booked = 1 WHERE id = ?', [apartment.id], function(err) {
+        if (err)
+            console.log(err);
+        
+        db_bookings.run('INSERT INTO bookings (apartment_id, from_date, to_date) VALUES (?, ?, ?)', [apartment.id, apartment.from_date, apartment.to_date], function(err) {
+            if (err)
+                console.log(err);
+            else
+                console.log('Added booking:', data);
+        });
+    });
+}
+
+function cancelBooking(booking) {
+    db_bookings.run('DELETE FROM bookings WHERE id = ?', [booking.id], function(err) {
+        if (err)
+            return res.sendStatus(500);
+        else
+            console.log('Removed booking:', data);
+    });
+}
+
+async function listenToChanges() {
     const connection = await amqp.connect('amqp://rabbitmq');
     const channel = await connection.createChannel();
+    await channel.assertQueue('search_actions', { durable: true });
 
-    const queueName = 'search_actions';
-
-    await channel.assertQueue(queueName, { durable: true });
-
-    channel.consume(queueName, (message) => {
+    channel.consume('search_actions', (message) => {
         const data = JSON.parse(message.content.toString());
-        console.log('Received apartment:', data);
-
         switch(data.action) {
             case "added_apartment":
-                db_apartments.run('INSERT INTO apartments (id, name) VALUES (?, ?)', [data.object.id, data.object.name], function(err) {
-                    if (err) {
-                        console.log(err);
-                        return res.sendStatus(500);
-                    } else {    
-                        console.log('Added apartment:', data);
-                    }
-                });
+                addApartment(data.object);
                 break;
             case "removed_apartment":
-                db_apartments.run('DELETE FROM apartments WHERE id = ?', [data.object.id], function(err) {
-                    if (err) {
-                        console.log(err);
-                        return res.sendStatus(500);
-                    } else {
-                        console.log('Removed apartment:', data);
-                    }
-                });
+                removeApartment(data.object);
                 break;
             case "booked_apartment":
-                db_apartments.run('UPDATE apartments SET booked = 1 WHERE id = ?', [data.object.id], function(err) {
-                    if (err) {
-                        console.log(err);
-                        return res.sendStatus(500);
-                    }
-                    db_bookings.run('INSERT INTO bookings (apartment_id, from_date, to_date) VALUES (?, ?, ?)', [data.object.id, data.object.from_date, data.object.to_date], function(err) {
-                        if (err) {
-                            console.log(err);
-                            return res.sendStatus(500);
-                        } else {
-                            console.log('Added booking:', data);
-                        }
-                    });
-                });
+                bookApartment(data.object);
+                break;
+            case "booking_cancelled":
+                cancelBooking(data.object);
                 break;
         }
     }, { noAck: true });
